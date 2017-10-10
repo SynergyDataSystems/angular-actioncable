@@ -246,6 +246,11 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   var _connecting= false;
   var _reconnectTimeout= false;
   var preConnectionCallbacks= [];
+  var safeDigest= function(){
+    if (!$rootScope.$$phase) {
+      $rootScope.$digest();
+    }
+  };
   var setReconnectTimeout= function(){
     stopReconnectTimeout();
     _reconnectTimeout = _reconnectTimeout || setTimeout(function(){
@@ -289,14 +294,14 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   var connection_dead= function(){
     if (_live) { startReconnectInterval(); }
     if (ActionCableConfig.debug) console.log("socket close");
-    $rootScope.$apply();
+    safeDigest();
   };
   websocket.on_connection_close_callback= connection_dead;
   var connection_alive= function(){
     stopReconnectInterval();
     setReconnectTimeout();
     if (ActionCableConfig.debug) console.log("socket open");
-    $rootScope.$apply();
+    safeDigest();
   };
   websocket.on_connection_open_callback= connection_alive;
   var methods= {
