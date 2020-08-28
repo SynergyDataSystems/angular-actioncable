@@ -244,26 +244,33 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   var controller= ActionCableController;
   var _live= false;
   var _connecting= false;
-  var _reconnectTimeout= false;
+  var _pingMonitorInterval= false;
   var preConnectionCallbacks= [];
+  var pinged = false;
   var safeDigest= function(){
-    if (!$rootScope.$$phase) {
+    if (!ActionCableConfig.autoApplyDisabled && !$rootScope.$$phase) {
       $rootScope.$digest();
     }
   };
-  var setReconnectTimeout= function(){
-    stopReconnectTimeout();
-    _reconnectTimeout = _reconnectTimeout || setTimeout(function(){
+  var startPingMonitorInterval= function(){
+    stopPingMonitorInterval();
+    _pingMonitorInterval = _pingMonitorInterval || setInterval(function(){
+      if (pinged) {
+        pinged = false;
+        return;
+      }
+
       if (ActionCableConfig.debug) console.log("ActionCable connection might be dead; no pings received recently");
       connection_dead();
-    }, timeoutTime + Math.floor(Math.random() * timeoutTime / 5));
+      stopPingMonitorInterval();
+    }, timeoutTime);
   };
-  var stopReconnectTimeout= function(){
-    clearTimeout(_reconnectTimeout);
-    _reconnectTimeout= false;
+  var stopPingMonitorInterval= function(){
+    clearTimeout(_pingMonitorInterval);
+    _pingMonitorInterval= false;
   };
   controller.after_ping_callback= function(){
-    setReconnectTimeout();
+    pinged = true;
   };
   var connectNow= function(){
     var promises = preConnectionCallbacks.map(function(callback){
@@ -273,10 +280,10 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
     $q.all(promises).then(
       function(){
         websocket.attempt_restart();
-        setReconnectTimeout();
+        startPingMonitorInterval();
       },
       function(){
-        setReconnectTimeout();
+        startPingMonitorInterval();
       }
     );
   };
@@ -288,8 +295,8 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   var stopReconnectInterval= function(){
     clearInterval(_connecting);
     _connecting= false;
-    clearTimeout(_reconnectTimeout);
-    _reconnectTimeout= false;
+    clearTimeout(_pingMonitorInterval);
+    _pingMonitorInterval= false;
   };
   var connection_dead= function(){
     if (_live) { startReconnectInterval(); }
@@ -299,7 +306,7 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   websocket.on_connection_close_callback= connection_dead;
   var connection_alive= function(){
     stopReconnectInterval();
-    setReconnectTimeout();
+    startPingMonitorInterval();
     if (ActionCableConfig.debug) console.log("socket open");
     safeDigest();
   };
@@ -315,7 +322,7 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
       if (ActionCableConfig.debug) console.info("Live stopped");
       _live= false;
       stopReconnectInterval();
-      stopReconnectTimeout();
+      stopPingMonitorInterval();
       websocket.close();
     },
     preConnectionCallbacks: function(){
@@ -434,7 +441,7 @@ ngActionCable.factory("ActionCableWebsocket", ['$websocket', 'ActionCableControl
       });
       dataStream.onMessage(function(message) {   //arriving message from backend
         controller.post(JSON.parse(message.data));
-      });
+      }, { autoApply: !ActionCableConfig.autoApplyDisabled });
     }
     return dataStream;
   };

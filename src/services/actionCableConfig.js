@@ -8,6 +8,7 @@ ngActionCable.factory('ActionCableConfig', function() {
   var _wsUri;
   var config= {
     autoStart: true,
+    autoApply: true,
     debug: false,
     protocols: []
   };

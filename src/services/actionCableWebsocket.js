@@ -87,7 +87,7 @@ ngActionCable.factory("ActionCableWebsocket", ['$websocket', 'ActionCableControl
       });
       dataStream.onMessage(function(message) {   //arriving message from backend
         controller.post(JSON.parse(message.data));
-      });
+      }, { autoApply: ActionCableConfig.autoApply });
     }
     return dataStream;
   };
