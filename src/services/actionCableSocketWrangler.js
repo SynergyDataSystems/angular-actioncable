@@ -7,8 +7,8 @@
 // of the internal trivalent logic. Exactly one will be true at all times.
 //
 // Actions are start() and stop()
-ngActionCable.factory('ActionCableSocketWrangler', ['$rootScope', '$q', 'ActionCableWebsocket', 'ActionCableConfig', 'ActionCableController',
-function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableController) {
+ngActionCable.factory('ActionCableSocketWrangler', ['$rootScope', '$q', 'ActionCableWebsocket', 'ActionCableConfig', 'ActionCableController', '$interval',
+function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableController, $interval) {
   var reconnectIntervalTime= 7537;
   var timeoutTime= 20143;
   var websocket= ActionCableWebsocket;
@@ -25,7 +25,7 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   };
   var startPingMonitorInterval= function(){
     stopPingMonitorInterval();
-    _pingMonitorInterval = _pingMonitorInterval || setInterval(function(){
+    _pingMonitorInterval = _pingMonitorInterval || $interval(function(){
       if (pinged) {
         pinged = false;
         return;
@@ -34,10 +34,10 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
       if (ActionCableConfig.debug) console.log("ActionCable connection might be dead; no pings received recently");
       connection_dead();
       stopPingMonitorInterval();
-    }, timeoutTime);
+    }, timeoutTime, 0, ActionCableConfig.autoApply);
   };
   var stopPingMonitorInterval= function(){
-    clearTimeout(_pingMonitorInterval);
+    $interval.cancel(_pingMonitorInterval);
     _pingMonitorInterval= false;
   };
   controller.after_ping_callback= function(){
@@ -59,14 +59,14 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
     );
   };
   var startReconnectInterval= function(){
-    _connecting= _connecting || setInterval(function(){
+    _connecting= _connecting || $interval(function(){
       connectNow();
-    }, reconnectIntervalTime + Math.floor(Math.random() * reconnectIntervalTime / 5));
+    }, reconnectIntervalTime + Math.floor(Math.random() * reconnectIntervalTime / 5), 0, ActionCableConfig.autoApply);
   };
   var stopReconnectInterval= function(){
-    clearInterval(_connecting);
+    $interval.cancel(_connecting);
     _connecting= false;
-    clearTimeout(_pingMonitorInterval);
+    $interval.cancel(_pingMonitorInterval);
     _pingMonitorInterval= false;
   };
   var connection_dead= function(){
