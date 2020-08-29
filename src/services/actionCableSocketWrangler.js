@@ -7,34 +7,41 @@
 // of the internal trivalent logic. Exactly one will be true at all times.
 //
 // Actions are start() and stop()
-ngActionCable.factory('ActionCableSocketWrangler', ['$rootScope', '$q', 'ActionCableWebsocket', 'ActionCableConfig', 'ActionCableController',
-function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableController) {
+ngActionCable.factory('ActionCableSocketWrangler', ['$rootScope', '$q', 'ActionCableWebsocket', 'ActionCableConfig', 'ActionCableController', '$interval',
+function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableController, $interval) {
   var reconnectIntervalTime= 7537;
   var timeoutTime= 20143;
   var websocket= ActionCableWebsocket;
   var controller= ActionCableController;
   var _live= false;
   var _connecting= false;
-  var _reconnectTimeout= false;
+  var _pingMonitorInterval= false;
   var preConnectionCallbacks= [];
+  var pinged = false;
   var safeDigest= function(){
-    if (!$rootScope.$$phase) {
+    if (ActionCableConfig.autoApply && !$rootScope.$$phase) {
       $rootScope.$digest();
     }
   };
-  var setReconnectTimeout= function(){
-    stopReconnectTimeout();
-    _reconnectTimeout = _reconnectTimeout || setTimeout(function(){
+  var startPingMonitorInterval= function(){
+    stopPingMonitorInterval();
+    _pingMonitorInterval = _pingMonitorInterval || $interval(function(){
+      if (pinged) {
+        pinged = false;
+        return;
+      }
+
       if (ActionCableConfig.debug) console.log("ActionCable connection might be dead; no pings received recently");
       connection_dead();
-    }, timeoutTime + Math.floor(Math.random() * timeoutTime / 5));
+      stopPingMonitorInterval();
+    }, timeoutTime, 0, ActionCableConfig.autoApply);
   };
-  var stopReconnectTimeout= function(){
-    clearTimeout(_reconnectTimeout);
-    _reconnectTimeout= false;
+  var stopPingMonitorInterval= function(){
+    $interval.cancel(_pingMonitorInterval);
+    _pingMonitorInterval= false;
   };
   controller.after_ping_callback= function(){
-    setReconnectTimeout();
+    pinged = true;
   };
   var connectNow= function(){
     var promises = preConnectionCallbacks.map(function(callback){
@@ -44,23 +51,23 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
     $q.all(promises).then(
       function(){
         websocket.attempt_restart();
-        setReconnectTimeout();
+        startPingMonitorInterval();
       },
       function(){
-        setReconnectTimeout();
+        startPingMonitorInterval();
       }
     );
   };
   var startReconnectInterval= function(){
-    _connecting= _connecting || setInterval(function(){
+    _connecting= _connecting || $interval(function(){
       connectNow();
-    }, reconnectIntervalTime + Math.floor(Math.random() * reconnectIntervalTime / 5));
+    }, reconnectIntervalTime + Math.floor(Math.random() * reconnectIntervalTime / 5), 0, ActionCableConfig.autoApply);
   };
   var stopReconnectInterval= function(){
-    clearInterval(_connecting);
+    $interval.cancel(_connecting);
     _connecting= false;
-    clearTimeout(_reconnectTimeout);
-    _reconnectTimeout= false;
+    $interval.cancel(_pingMonitorInterval);
+    _pingMonitorInterval= false;
   };
   var connection_dead= function(){
     if (_live) { startReconnectInterval(); }
@@ -70,7 +77,7 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
   websocket.on_connection_close_callback= connection_dead;
   var connection_alive= function(){
     stopReconnectInterval();
-    setReconnectTimeout();
+    startPingMonitorInterval();
     if (ActionCableConfig.debug) console.log("socket open");
     safeDigest();
   };
@@ -86,7 +93,7 @@ function($rootScope, $q, ActionCableWebsocket, ActionCableConfig, ActionCableCon
       if (ActionCableConfig.debug) console.info("Live stopped");
       _live= false;
       stopReconnectInterval();
-      stopReconnectTimeout();
+      stopPingMonitorInterval();
       websocket.close();
     },
     preConnectionCallbacks: function(){
